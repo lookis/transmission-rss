@@ -6,4 +6,8 @@ transmission-rpc:
   password: admin
 rss:
   - url: https://rss.app/feeds/1234567890
-    parser: m-team
+    parser: nexusphp
+parser:
+  nexusphp:
+    path: rss,channel,item,enclosure
+    property: url

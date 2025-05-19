@@ -1,15 +1,26 @@
 use anyhow::{Context, Result};
+use clap::Parser;
 use quick_xml::events::Event;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 use transmission_rpc::{TransClient, types::BasicAuth, types::TorrentAddArgs};
 use url::Url;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the app configuration file
+    #[arg(short, long, default_value = "config/app.yaml")]
+    config: String,
+}
 
 #[derive(Debug, Deserialize)]
 struct Config {
     #[serde(rename = "transmission-rpc")]
     transmission_rpc: TransmissionConfig,
     rss: Vec<RssConfig>,
+    parser: HashMap<String, ParserConfig>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,11 +46,12 @@ struct ParserConfig {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Args::parse();
+
     // Read app config
-    let config_content =
-        fs::read_to_string("config/app.yaml").context("Failed to read app.yaml")?;
+    let config_content = fs::read_to_string(&args.config).context("Failed to read app config")?;
     let config: Config =
-        serde_yaml::from_str(&config_content).context("Failed to parse app.yaml")?;
+        serde_yaml::from_str(&config_content).context("Failed to parse app config")?;
 
     // Create transmission client
     let mut client = TransClient::with_auth(
@@ -57,12 +69,10 @@ async fn main() -> Result<()> {
 
     // Process each RSS feed
     for rss_config in config.rss {
-        // Read parser config
-        let parser_path = format!("config/parser/{}.yaml", rss_config.parser);
-        let parser_content = fs::read_to_string(&parser_path)
-            .with_context(|| format!("Failed to read parser config: {}", parser_path))?;
-        let parser_config: ParserConfig = serde_yaml::from_str(&parser_content)
-            .with_context(|| format!("Failed to parse parser config: {}", parser_path))?;
+        // Get parser config for this RSS feed
+        let parser_config = config.parser.get(&rss_config.parser).with_context(|| {
+            format!("Parser '{}' not found in configuration", rss_config.parser)
+        })?;
 
         // Download RSS feed
         let response = reqwest::get(&rss_config.url)
@@ -74,7 +84,7 @@ async fn main() -> Result<()> {
             .with_context(|| format!("Failed to get RSS content: {}", rss_config.url))?;
 
         // Parse XML and extract torrent URLs
-        let urls = parse_xml(&xml_content, &parser_config)?;
+        let urls = parse_xml(&xml_content, parser_config)?;
 
         // Add torrents to transmission
         for url in urls {
