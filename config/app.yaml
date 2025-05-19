@@ -1,0 +1,9 @@
+transmission-rpc:
+  host: 127.0.0.1
+  port: 9091
+  path: /transmission/rpc
+  username: admin
+  password: admin
+rss:
+  - url: https://rss.app/feeds/1234567890
+    parser: m-team
